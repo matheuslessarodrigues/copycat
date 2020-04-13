@@ -8,7 +8,10 @@ fn main() {
     if atty::isnt(Stream::Stdin) {
         let mut text = String::new();
         stdin().lock().read_to_string(&mut text).unwrap();
-        if text.ends_with('\n') {
+        if text.ends_with("\r\n") {
+            text.pop();
+            text.pop();
+        } else if text.ends_with('\n') {
             text.pop();
         }
         clipboard.set_string_contents(text).unwrap();
