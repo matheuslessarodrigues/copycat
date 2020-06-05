@@ -1,5 +1,5 @@
 use std::{
-    io::{stdin, stdout, Read, Write},
+    io::{self, stdin, stdout, Read, Write},
     mem::size_of,
     ops::{Deref, DerefMut},
     ptr::{null_mut, NonNull},
@@ -22,7 +22,14 @@ use winapi::{
     },
 };
 
-struct Dc(HDC);
+struct Bitmap {
+    pub width: usize,
+    pub height: usize,
+    pub bits: u8,
+    pub bytes: Vec<u8>,
+}
+
+struct Dc(pub HDC);
 impl Dc {
     pub fn new() -> Self {
         Self(unsafe { GetDC(null_mut()) })
@@ -62,7 +69,7 @@ impl<T> DerefMut for LocalMemory<T> {
     }
 }
 
-fn get_clipboard_bitmap() -> Option<Vec<u8>> {
+fn get_clipboard_bitmap() -> Option<Bitmap> {
     let handle = raw::get_clipboard_data(CF_BITMAP).ok()?;
     let mut bitmap = BITMAP {
         bmType: 0,
@@ -101,7 +108,6 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
     };
 
     let mut info: LocalMemory<BITMAPINFO> = if clr_bits < 24 {
-        //let size = size_of::<BITMAPINFOHEADER>() + size_of::<RGBQUAD>() * (1 << clr_bits);
         LocalMemory::new(size_of::<BITMAPINFOHEADER>() + size_of::<RGBQUAD>() * (1 << clr_bits))?
     } else {
         LocalMemory::new(size_of::<BITMAPINFOHEADER>())?
@@ -182,14 +188,19 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
 
     out.write(&buf[..]).ok()?;
 
-    Some(out)
+    Some(Bitmap {
+        width: bitmap.bmWidth as _,
+        height: bitmap.bmHeight as _,
+        bits: clr_bits as _,
+        bytes: out,
+    })
 }
 
-fn write_stdout<W>(write: &mut W, bytes: &[u8]) -> Result<(), &'static str>
+fn handle_write<F, R>(block: F) -> Result<(), &'static str>
 where
-    W: Write,
+    F: FnOnce() -> io::Result<R>,
 {
-    match write.write(bytes) {
+    match block() {
         Ok(_) => Ok(()),
         Err(_) => Err("could not write to stdout"),
     }
@@ -220,15 +231,21 @@ fn try_main() -> Result<(), &'static str> {
         let mut stdout = stdout.lock();
         let mut text = String::new();
         if let Ok(()) = clipboard.get_string(&mut text) {
-            write_stdout(&mut stdout, text.as_bytes())?;
+            handle_write(|| stdout.write(text.as_bytes()))?;
             if atty::is(Stream::Stdout) && !text.ends_with('\n') {
-                write_stdout(&mut stdout, &['\n' as u8])?;
+                handle_write(|| stdout.write_u8('\n' as _))?;
             }
-        } else if let Some(bytes) = get_clipboard_bitmap() {
+        } else if let Some(bitmap) = get_clipboard_bitmap() {
             if atty::is(Stream::Stdout) {
-                write_stdout(&mut stdout, "epa era imagem!!\n".as_bytes())?;
+                handle_write(|| {
+                    write!(
+                        stdout,
+                        "bitmap: {}, {} ({} bits)\n",
+                        bitmap.width, bitmap.height, bitmap.bits
+                    )
+                })?;
             } else {
-                write_stdout(&mut stdout, &bytes[..])?;
+                handle_write(|| stdout.write(&bitmap.bytes[..]))?;
             }
         } else {
             return Err("clipboard did not contain neither text nor bitmap");

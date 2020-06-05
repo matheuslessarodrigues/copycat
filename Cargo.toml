@@ -1,6 +1,6 @@
 [package]
 name = "copycat"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Matheus Lessa <matheus@fastmail.com>"]
 edition = "2018"
 description = "A simple crossplatform clipboard cli interface. Pipe into it to copy. Pipe from it to paste."
