@@ -23,12 +23,13 @@ use winapi::{
 struct Dc(HDC);
 impl Dc {
     fn new() -> Self {
-        Self(unsafe { GetDC(ptr::null_mut()) })
+        Self(unsafe { CreateCompatibleDC(GetDC(ptr::null_mut())) })
     }
 }
 impl Drop for Dc {
     fn drop(&mut self) {
-        unsafe { ReleaseDC(ptr::null_mut(), self.0) };
+        //dbg!("asdsad");
+        //unsafe { ReleaseDC(ptr::null_mut(), self.0) };
     }
 }
 
@@ -92,12 +93,12 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
         ((((info.bmiHeader.biWidth * clr_bits + 31) & !31) / 8) * info.bmiHeader.biHeight) as _;
     info.bmiHeader.biClrImportant = 0;
 
-    let hdc = unsafe { CreateCompatibleDC(GetDC(ptr::null_mut())) };
+    let dc = Dc::new();
     let mut buf = Vec::<u8>::with_capacity(info.bmiHeader.biSizeImage as _);
     buf.resize(buf.capacity(), 0);
     if unsafe {
         GetDIBits(
-            hdc,
+            dc.0,
             handle.as_ptr() as _,
             0,
             info.bmiHeader.biHeight as _,
@@ -109,7 +110,8 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
     {
         unsafe {
             LocalFree(info as *mut _ as _);
-            ReleaseDC(ptr::null_mut(), hdc);
+            ReleaseDC(ptr::null_mut(), dc.0);
+            //drop(dc);
         }
         return None;
     }
@@ -158,7 +160,8 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
 
     unsafe {
         LocalFree(info as *mut _ as _);
-        ReleaseDC(ptr::null_mut(), hdc);
+        ReleaseDC(ptr::null_mut(), dc.0);
+        //drop(dc);
     }
 
     Some(out)
