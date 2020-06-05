@@ -210,22 +210,29 @@ fn try_main() -> Result<(), &'static str> {
     let clipboard = Clipboard::new().map_err(|_| "could not open clipboard")?;
 
     if atty::isnt(Stream::Stdin) {
-        let mut text = String::new();
+        let mut bytes = Vec::new();
         stdin()
             .lock()
-            .read_to_string(&mut text)
+            .read_to_end(&mut bytes)
             .map_err(|_| "could not read from stdin")?;
-        let text = if text.ends_with("\r\n") {
-            &text[..text.len() - 2]
-        } else if text.ends_with('\n') {
-            &text[..text.len() - 1]
-        } else {
-            &text[..]
-        };
-
-        clipboard
-            .set_string(text)
-            .map_err(|_| "could not set clipboard text")?;
+        match std::str::from_utf8(&bytes[..]) {
+            Ok(text) => {
+                let text = if text.ends_with("\r\n") {
+                    &text[..text.len() - 2]
+                } else if text.ends_with('\n') {
+                    &text[..text.len() - 1]
+                } else {
+                    &text[..]
+                };
+                clipboard
+                    .set_string(text)
+                    .map_err(|_| "could not set clipboard text")?;
+            }
+            Err(_) => {
+                // handle bitmap here
+                return Err("not valid utf8");
+            }
+        }
     } else {
         let stdout = stdout();
         let mut stdout = stdout.lock();
