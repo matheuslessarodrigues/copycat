@@ -1,6 +1,7 @@
 use std::{
     io::{stdin, stdout, Read, Write},
     mem::size_of,
+    ops::{Deref, DerefMut},
     ptr::{null_mut, NonNull},
     slice,
 };
@@ -22,16 +23,42 @@ use winapi::{
 };
 
 struct Dc(HDC);
-
 impl Dc {
     pub fn new() -> Self {
         Self(unsafe { GetDC(null_mut()) })
     }
 }
-
 impl Drop for Dc {
     fn drop(&mut self) {
         unsafe { ReleaseDC(null_mut(), self.0) };
+    }
+}
+
+struct LocalMemory<T>(NonNull<T>);
+impl<T> LocalMemory<T> {
+    pub fn new(size: usize) -> Option<Self> {
+        let ptr = unsafe { LocalAlloc(LPTR, size) } as *mut _;
+        Some(Self(NonNull::new(ptr)?))
+    }
+
+    pub fn as_ptr(&mut self) -> *mut T {
+        self.0.as_ptr()
+    }
+}
+impl<T> Drop for LocalMemory<T> {
+    fn drop(&mut self) {
+        unsafe { LocalFree(self.0.as_ptr() as _) };
+    }
+}
+impl<T> Deref for LocalMemory<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.0.as_ref() }
+    }
+}
+impl<T> DerefMut for LocalMemory<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.0.as_mut() }
     }
 }
 
@@ -73,14 +100,12 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
         32
     };
 
-    let info = if clr_bits < 24 {
-        let size = size_of::<BITMAPINFOHEADER>() + size_of::<RGBQUAD>() * (1 << clr_bits);
-        unsafe { LocalAlloc(LPTR, size) }
+    let mut info: LocalMemory<BITMAPINFO> = if clr_bits < 24 {
+        //let size = size_of::<BITMAPINFOHEADER>() + size_of::<RGBQUAD>() * (1 << clr_bits);
+        LocalMemory::new(size_of::<BITMAPINFOHEADER>() + size_of::<RGBQUAD>() * (1 << clr_bits))?
     } else {
-        unsafe { LocalAlloc(LPTR, size_of::<BITMAPINFOHEADER>()) }
+        LocalMemory::new(size_of::<BITMAPINFOHEADER>())?
     };
-    let mut info = NonNull::new(info as *mut BITMAPINFO)?;
-    let info = unsafe { info.as_mut() };
 
     info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as _;
     info.bmiHeader.biWidth = bitmap.bmWidth;
@@ -107,14 +132,11 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
             0,
             info.bmiHeader.biHeight as _,
             buf.as_mut_ptr() as _,
-            info as *mut _,
+            info.as_ptr(),
             DIB_RGB_COLORS,
         )
     } == 0
     {
-        unsafe {
-            LocalFree(info as *mut _ as _);
-        }
         return None;
     }
 
@@ -159,10 +181,6 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
     }
 
     out.write(&buf[..]).ok()?;
-
-    unsafe {
-        LocalFree(info as *mut _ as _);
-    }
 
     Some(out)
 }
