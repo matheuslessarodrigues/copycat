@@ -13,4 +13,6 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 atty = "0.2.14"
-clipboard2 = "0.1.1"
+clipboard-win = "3.0.2"
+winapi = "0.3.8"
+byteorder = "1.3.4"
