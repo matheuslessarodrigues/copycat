@@ -1,21 +1,39 @@
 use std::{
     io::{stdin, stdout, Read, Write},
     mem::size_of,
-    ptr, slice,
+    ptr::{null_mut, NonNull},
+    slice,
 };
 
 use atty::Stream;
 use byteorder::{LittleEndian, WriteBytesExt};
 use clipboard_win::{raw, Clipboard};
-use winapi::um::{
-    minwinbase::LPTR,
-    winbase::{LocalAlloc, LocalFree},
-    wingdi::{
-        CreateCompatibleDC, GetDIBits, GetObjectW, BITMAP, BITMAPFILEHEADER, BITMAPINFO,
-        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, RGBQUAD,
+use winapi::{
+    shared::windef::HDC,
+    um::{
+        minwinbase::LPTR,
+        winbase::{LocalAlloc, LocalFree},
+        wingdi::{
+            GetDIBits, GetObjectW, BITMAP, BITMAPFILEHEADER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+            DIB_RGB_COLORS, RGBQUAD,
+        },
+        winuser::{GetDC, ReleaseDC, CF_BITMAP},
     },
-    winuser::{GetDC, ReleaseDC, CF_BITMAP},
 };
+
+struct Dc(HDC);
+
+impl Dc {
+    pub fn new() -> Self {
+        Self(unsafe { GetDC(null_mut()) })
+    }
+}
+
+impl Drop for Dc {
+    fn drop(&mut self) {
+        unsafe { ReleaseDC(null_mut(), self.0) };
+    }
+}
 
 fn get_clipboard_bitmap() -> Option<Vec<u8>> {
     let handle = raw::get_clipboard_data(CF_BITMAP).ok()?;
@@ -26,8 +44,9 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
         bmWidthBytes: 0,
         bmPlanes: 0,
         bmBitsPixel: 0,
-        bmBits: ptr::null_mut(),
+        bmBits: null_mut(),
     };
+
     if unsafe {
         GetObjectW(
             handle.as_ptr(),
@@ -60,8 +79,8 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
     } else {
         unsafe { LocalAlloc(LPTR, size_of::<BITMAPINFOHEADER>()) }
     };
-    let info = info as *mut BITMAPINFO;
-    let info = &mut unsafe { *info };
+    let mut info = NonNull::new(info as *mut BITMAPINFO)?;
+    let info = unsafe { info.as_mut() };
 
     info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as _;
     info.bmiHeader.biWidth = bitmap.bmWidth;
@@ -77,12 +96,13 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
         ((((info.bmiHeader.biWidth * clr_bits + 31) & !31) / 8) * info.bmiHeader.biHeight) as _;
     info.bmiHeader.biClrImportant = 0;
 
-    let dc = unsafe { CreateCompatibleDC(GetDC(ptr::null_mut())) };
-    let mut buf = Vec::<u8>::with_capacity(info.bmiHeader.biSizeImage as _);
+    let dc = Dc::new();
+    let mut buf = Vec::with_capacity(info.bmiHeader.biSizeImage as _);
     buf.resize(buf.capacity(), 0);
+
     if unsafe {
         GetDIBits(
-            dc,
+            dc.0,
             handle.as_ptr() as _,
             0,
             info.bmiHeader.biHeight as _,
@@ -94,7 +114,6 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
     {
         unsafe {
             LocalFree(info as *mut _ as _);
-            ReleaseDC(ptr::null_mut(), dc);
         }
         return None;
     }
@@ -143,7 +162,6 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
 
     unsafe {
         LocalFree(info as *mut _ as _);
-        ReleaseDC(ptr::null_mut(), dc);
     }
 
     Some(out)
