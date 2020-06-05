@@ -7,31 +7,15 @@ use std::{
 use atty::Stream;
 use byteorder::{LittleEndian, WriteBytesExt};
 use clipboard_win::{raw, Clipboard};
-use winapi::{
-    shared::windef::HDC,
-    um::{
-        minwinbase::LPTR,
-        winbase::{LocalAlloc, LocalFree},
-        wingdi::{
-            CreateCompatibleDC, GetDIBits, GetObjectW, BITMAP, BITMAPFILEHEADER, BITMAPINFO,
-            BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, RGBQUAD,
-        },
-        winuser::{GetDC, ReleaseDC, CF_BITMAP},
+use winapi::um::{
+    minwinbase::LPTR,
+    winbase::{LocalAlloc, LocalFree},
+    wingdi::{
+        CreateCompatibleDC, GetDIBits, GetObjectW, BITMAP, BITMAPFILEHEADER, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, RGBQUAD,
     },
+    winuser::{GetDC, ReleaseDC, CF_BITMAP},
 };
-
-struct Dc(HDC);
-impl Dc {
-    fn new() -> Self {
-        Self(unsafe { CreateCompatibleDC(GetDC(ptr::null_mut())) })
-    }
-}
-impl Drop for Dc {
-    fn drop(&mut self) {
-        //dbg!("asdsad");
-        //unsafe { ReleaseDC(ptr::null_mut(), self.0) };
-    }
-}
 
 fn get_clipboard_bitmap() -> Option<Vec<u8>> {
     let handle = raw::get_clipboard_data(CF_BITMAP).ok()?;
@@ -93,12 +77,12 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
         ((((info.bmiHeader.biWidth * clr_bits + 31) & !31) / 8) * info.bmiHeader.biHeight) as _;
     info.bmiHeader.biClrImportant = 0;
 
-    let dc = Dc::new();
+    let dc = unsafe { CreateCompatibleDC(GetDC(ptr::null_mut())) };
     let mut buf = Vec::<u8>::with_capacity(info.bmiHeader.biSizeImage as _);
     buf.resize(buf.capacity(), 0);
     if unsafe {
         GetDIBits(
-            dc.0,
+            dc,
             handle.as_ptr() as _,
             0,
             info.bmiHeader.biHeight as _,
@@ -110,8 +94,7 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
     {
         unsafe {
             LocalFree(info as *mut _ as _);
-            ReleaseDC(ptr::null_mut(), dc.0);
-            //drop(dc);
+            ReleaseDC(ptr::null_mut(), dc);
         }
         return None;
     }
@@ -160,8 +143,7 @@ fn get_clipboard_bitmap() -> Option<Vec<u8>> {
 
     unsafe {
         LocalFree(info as *mut _ as _);
-        ReleaseDC(ptr::null_mut(), dc.0);
-        //drop(dc);
+        ReleaseDC(ptr::null_mut(), dc);
     }
 
     Some(out)
