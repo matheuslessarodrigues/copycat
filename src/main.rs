@@ -1,5 +1,5 @@
 use std::{
-    io::{self, stdin, stdout, Read, Write},
+    io::{self, stdin, stdout, Cursor, Read, Write},
     mem::size_of,
     ops::{Deref, DerefMut},
     ptr::{null_mut, NonNull},
@@ -7,7 +7,7 @@ use std::{
 };
 
 use atty::Stream;
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use clipboard_win::{raw, Clipboard};
 use winapi::{
     shared::windef::HDC,
@@ -15,10 +15,10 @@ use winapi::{
         minwinbase::LPTR,
         winbase::{LocalAlloc, LocalFree},
         wingdi::{
-            GetDIBits, GetObjectW, BITMAP, BITMAPFILEHEADER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-            DIB_RGB_COLORS, RGBQUAD,
+            CreateDIBitmap, GetDIBits, GetObjectW, BITMAP, BITMAPFILEHEADER, BITMAPINFO,
+            BITMAPINFOHEADER, BI_RGB, CBM_INIT, DIB_RGB_COLORS, RGBQUAD,
         },
-        winuser::{GetDC, ReleaseDC, CF_BITMAP},
+        winuser::{EmptyClipboard, GetDC, ReleaseDC, SetClipboardData, CF_BITMAP},
     },
 };
 
@@ -196,6 +196,52 @@ fn get_clipboard_bitmap() -> Option<Bitmap> {
     })
 }
 
+fn set_clipboard_bitmap(bytes: &[u8]) -> io::Result<()> {
+    let mut stream = Cursor::new(bytes);
+    let file_header = BITMAPFILEHEADER {
+        bfType: stream.read_u16::<LittleEndian>()?,
+        bfSize: stream.read_u32::<LittleEndian>()?,
+        bfReserved1: stream.read_u16::<LittleEndian>()?,
+        bfReserved2: stream.read_u16::<LittleEndian>()?,
+        bfOffBits: stream.read_u32::<LittleEndian>()?,
+    };
+
+    let info_header = BITMAPINFOHEADER {
+        biSize: stream.read_u32::<LittleEndian>()?,
+        biWidth: stream.read_i32::<LittleEndian>()?,
+        biHeight: stream.read_i32::<LittleEndian>()?,
+        biPlanes: stream.read_u16::<LittleEndian>()?,
+        biBitCount: stream.read_u16::<LittleEndian>()?,
+        biCompression: stream.read_u32::<LittleEndian>()?,
+        biSizeImage: stream.read_u32::<LittleEndian>()?,
+        biXPelsPerMeter: stream.read_i32::<LittleEndian>()?,
+        biYPelsPerMeter: stream.read_i32::<LittleEndian>()?,
+        biClrUsed: stream.read_u32::<LittleEndian>()?,
+        biClrImportant: stream.read_u32::<LittleEndian>()?,
+    };
+
+    let info = &info_header as *const _ as *const BITMAPINFO;
+    let bitmap = &bytes[file_header.bfOffBits as _..];
+
+    unsafe {
+        let dc = Dc::new();
+        let handle = CreateDIBitmap(
+            dc.0,
+            &info_header as _,
+            CBM_INIT,
+            bitmap.as_ptr() as _,
+            info,
+            DIB_RGB_COLORS,
+        );
+        EmptyClipboard();
+        if SetClipboardData(CF_BITMAP, handle as _).is_null() {
+            return Err(io::Error::last_os_error());
+        }
+    }
+
+    Ok(())
+}
+
 fn handle_write<F, R>(block: F) -> Result<(), &'static str>
 where
     F: FnOnce() -> io::Result<R>,
@@ -229,8 +275,7 @@ fn try_main() -> Result<(), &'static str> {
                     .map_err(|_| "could not set clipboard text")?;
             }
             Err(_) => {
-                // handle bitmap here
-                return Err("not valid utf8");
+                set_clipboard_bitmap(&bytes[..]).map_err(|_| "could not set clipboard bitmap")?;
             }
         }
     } else {

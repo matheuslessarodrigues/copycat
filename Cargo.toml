@@ -1,6 +1,6 @@
 [package]
 name = "copycat"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Matheus Lessa <matheus@fastmail.com>"]
 edition = "2018"
 description = "A simple crossplatform clipboard cli interface. Pipe into it to copy. Pipe from it to paste."
@@ -13,6 +13,6 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 atty = "0.2.14"
+byteorder = "1.3.4"
 clipboard-win = "3.0.2"
 winapi = "0.3.8"
-byteorder = "1.3.4"
