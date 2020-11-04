@@ -12,17 +12,22 @@ fn try_main() -> Result<(), &'static str> {
 
     if let Some(arg) = env::args().nth(1) {
         match arg.as_str() {
+            "-i" => force_in = true,
+            "-o" => force_out = true,
             "-h" => {
-                println!("copycat\n");
-                println!("Pipe into it to copy");
+                println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                println!("\nPipe into it to copy");
                 println!("Pipe from it to paste\n");
                 println!("\t-h\tprints this help message");
+                println!("\t-v\tprints version");
                 println!("\t-i\tforce set clipboard from stdin");
                 println!("\t-o\tforce output clipboard to stdout");
                 return Ok(());
             }
-            "-i" => force_in = true,
-            "-o" => force_out = true,
+            "-v" => {
+                println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
             _ => (),
         }
     }
