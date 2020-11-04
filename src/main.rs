@@ -1,12 +1,35 @@
-use std::io::{stdin, stdout, Read, Write};
+use std::{
+    env,
+    io::{stdin, stdout, Read, Write},
+};
 
 use atty::Stream;
 use clipboard_win::{image, Clipboard};
 
 fn try_main() -> Result<(), &'static str> {
+    let mut force_in = false;
+    let mut force_out = false;
+
+    if let Some(arg) = env::args().nth(1) {
+        match arg.as_str() {
+            "-h" => {
+                println!("copycat\n");
+                println!("Pipe into it to copy");
+                println!("Pipe from it to paste\n");
+                println!("\t-h\tprints this help message");
+                println!("\t-i\tforce set clipboard from stdin");
+                println!("\t-o\tforce output clipboard to stdout");
+                return Ok(());
+            }
+            "-i" => force_in = true,
+            "-o" => force_out = true,
+            _ => (),
+        }
+    }
+
     let clipboard = Clipboard::new().map_err(|_| "could not open clipboard")?;
 
-    if atty::isnt(Stream::Stdin) {
+    if !force_out && (force_in || atty::isnt(Stream::Stdin)) {
         let mut bytes = Vec::new();
         stdin()
             .lock()
