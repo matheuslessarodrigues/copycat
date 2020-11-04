@@ -41,14 +41,14 @@ fn try_main() -> Result<(), &'static str> {
             .read_to_end(&mut bytes)
             .map_err(|_| "could not read from stdin")?;
         match std::str::from_utf8(&bytes[..]) {
-            Ok(text) => {
-                let text = if text.ends_with("\r\n") {
-                    &text[..text.len() - 2]
-                } else if text.ends_with('\n') {
-                    &text[..text.len() - 1]
-                } else {
-                    &text[..]
-                };
+            Ok(mut text) => {
+                if !force_in {
+                    if text.ends_with("\r\n") {
+                        text = &text[..text.len() - 2]
+                    } else if text.ends_with('\n') {
+                        text = &text[..text.len() - 1]
+                    }
+                }
                 clipboard
                     .set_string(text)
                     .map_err(|_| "could not set clipboard text")?;
@@ -70,7 +70,7 @@ fn try_main() -> Result<(), &'static str> {
                 .map_err(|_| "could not write text to stdout")?;
             if atty::is(Stream::Stdout) && !text.ends_with('\n') {
                 stdout
-                    .write(&['\n' as _])
+                    .write(&[b'\n'])
                     .map_err(|_| "could not write text to stdout")?;
             }
         } else if let Ok(bitmap) = clipboard.get_bitmap() {
