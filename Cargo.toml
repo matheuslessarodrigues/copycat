@@ -1,12 +1,12 @@
 [package]
 name = "copycat"
-version = "0.6.1"
-authors = ["Matheus Lessa <matheus@fastmail.com>"]
+version = "0.6.2"
+authors = ["Matheus Lessa <vamolessa@mm.st>"]
 edition = "2018"
 description = "A simple crossplatform clipboard cli interface. Pipe into it to copy. Pipe from it to paste."
 readme = "README.md"
-homepage = "https://github.com/matheuslessarodrigues/copycat"
-repository = "https://github.com/matheuslessarodrigues/copycat"
+homepage = "https://github.com/vamolessa/copycat"
+repository = "https://github.com/vamolessa/copycat"
 license = "MIT"
 keywords = ["clip", "clipboard", "copy"]
 categories = ["command-line-utilities"]
